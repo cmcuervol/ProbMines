@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 
 class MinesweeperBoard:
     def __init__(self, rows: int, cols: int, num_mines: int):
@@ -9,14 +9,31 @@ class MinesweeperBoard:
         self.rows = rows
         self.cols = cols
         self.num_mines = num_mines
-        
-        # Core grids
-        self.mines = np.zeros((rows, cols), dtype=bool)
-        self.adjacent_counts = np.zeros((rows, cols), dtype=int)
-        
-        # Visibility states: 0 = Hidden, 1 = Revealed, 2 = Flagged
-        self.state = np.zeros((rows, cols), dtype=int)
+        self.reset()
+
+    def reset(self) -> None:
+        """Starts a completely new game from zero with fresh mine placement."""
+        self.mines = np.zeros((self.rows, self.cols), dtype=bool)
+        self.adjacent_counts = np.zeros((self.rows, self.cols), dtype=int)
+        # 0 = Hidden, 1 = Revealed, 2 = Flagged
+        self.state = np.zeros((self.rows, self.cols), dtype=int)
         self.mines_placed = False
+        self.history: List[Tuple[np.ndarray, bool]] = []
+
+    def _save_snapshot(self) -> None:
+        """Stores current board visibility state before a player action."""
+        self.history.append((self.state.copy(), self.mines_placed))
+
+    def undo(self) -> bool:
+        """Reverts the board to the state right before the last move."""
+        if not self.history:
+            return False
+        self.state, self.mines_placed = self.history.pop()
+        if not self.mines_placed:
+            # If we undid the very first click, clear mines so first-click safety holds
+            self.mines.fill(False)
+            self.adjacent_counts.fill(0)
+        return True
 
     def place_mines(self, safe_coord: Optional[Tuple[int, int]] = None) -> None:
         """Randomly places x mines across the m x n grid, avoiding safe_coord."""
@@ -46,17 +63,18 @@ class MinesweeperBoard:
 
     def reveal(self, r: int, c: int) -> bool:
         """Reveals a cell. Returns False if a mine was hit, True otherwise."""
-        if not self.mines_placed:
-            self.place_mines(safe_coord=(r, c))
-            
         if self.state[r, c] != 0:
             return True
+
+        self._save_snapshot()
+
+        if not self.mines_placed:
+            self.place_mines(safe_coord=(r, c))
             
         if self.mines[r, c]:
             self.state[r, c] = 1
             return False  # Game Over
             
-        # Flood-fill reveal for zero-adjacent cells
         stack = [(r, c)]
         while stack:
             curr_r, curr_c = stack.pop()
@@ -73,7 +91,6 @@ class MinesweeperBoard:
 
     def toggle_flag(self, r: int, c: int) -> None:
         """Toggles a flag on a hidden cell."""
-        if self.state[r, c] == 0:
-            self.state[r, c] = 2
-        elif self.state[r, c] == 2:
-            self.state[r, c] = 0
+        if self.state[r, c] in (0, 2):
+            self._save_snapshot()
+            self.state[r, c] = 2 if self.state[r, c] == 0 else 0
