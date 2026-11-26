@@ -79,11 +79,21 @@ def run_game(rows: int = 12, cols: int = 16, mines: int = 30):
                     r = (my - TOP_BAR_HEIGHT) // (CELL_SIZE + MARGIN)
                     
                     if 0 <= r < rows and 0 <= c < cols:
-                        if event.button == 1:  # Left click: reveal
-                            alive = board.reveal(r, c)
+                        if event.button == 1:  # Left click: reveal or chord
+                            if board.state[r, c] == 0:
+                                alive = board.reveal(r, c)
+                            elif board.state[r, c] == 1:
+                                alive = board.chord_reveal(r, c)
+                            else:
+                                alive = True
+
                             if not alive:
                                 game_over = True
-                                board.state[board.mines] = 1  # Show all mines on loss
+                                board.state[board.mines] = 1
+                        elif event.button == 2:  # Middle click: chord
+                            if not board.chord_reveal(r, c):
+                                game_over = True
+                                board.state[board.mines] = 1
                         elif event.button == 3:  # Right click: flag
                             board.toggle_flag(r, c)
 

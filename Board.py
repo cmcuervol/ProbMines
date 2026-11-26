@@ -30,7 +30,6 @@ class MinesweeperBoard:
             return False
         self.state, self.mines_placed = self.history.pop()
         if not self.mines_placed:
-            # If we undid the very first click, clear mines so first-click safety holds
             self.mines.fill(False)
             self.adjacent_counts.fill(0)
         return True
@@ -61,20 +60,15 @@ class MinesweeperBoard:
                 self.adjacent_counts += padded[1 + dr : 1 + dr + self.rows, 
                                                1 + dc : 1 + dc + self.cols]
 
-    def reveal(self, r: int, c: int) -> bool:
-        """Reveals a cell. Returns False if a mine was hit, True otherwise."""
+    def _flood_reveal(self, r: int, c: int) -> bool:
+        """Internal reveal without saving a history snapshot. Returns False if a mine is hit."""
         if self.state[r, c] != 0:
             return True
 
-        self._save_snapshot()
-
-        if not self.mines_placed:
-            self.place_mines(safe_coord=(r, c))
-            
         if self.mines[r, c]:
             self.state[r, c] = 1
-            return False  # Game Over
-            
+            return False
+
         stack = [(r, c)]
         while stack:
             curr_r, curr_c = stack.pop()
@@ -88,6 +82,50 @@ class MinesweeperBoard:
                         if self.state[nr, nc] == 0:
                             stack.append((nr, nc))
         return True
+
+    def reveal(self, r: int, c: int) -> bool:
+        """Reveals a hidden cell. Returns False if a mine was hit, True otherwise."""
+        if self.state[r, c] != 0:
+            return True
+
+        self._save_snapshot()
+
+        if not self.mines_placed:
+            self.place_mines(safe_coord=(r, c))
+            
+        return self._flood_reveal(r, c)
+
+    def chord_reveal(self, r: int, c: int) -> bool:
+        """
+        If (r, c) is a revealed numbered cell whose adjacent flags match its
+        mine count, reveals all remaining hidden neighbors in one move.
+        Returns False if a wrong flag caused a mine to trigger.
+        """
+        if self.state[r, c] != 1 or self.adjacent_counts[r, c] == 0:
+            return True
+
+        r_min, r_max = max(0, r - 1), min(self.rows, r + 2)
+        c_min, c_max = max(0, c - 1), min(self.cols, c + 2)
+
+        sub_state = self.state[r_min:r_max, c_min:c_max]
+        flagged_count = int(np.sum(sub_state == 2))
+        hidden_coords = [
+            (nr, nc)
+            for nr in range(r_min, r_max)
+            for nc in range(c_min, c_max)
+            if self.state[nr, nc] == 0
+        ]
+
+        # Only trigger if flags match the cell's number and there are hidden cells left
+        if flagged_count != self.adjacent_counts[r, c] or not hidden_coords:
+            return True
+
+        self._save_snapshot()
+        alive = True
+        for nr, nc in hidden_coords:
+            if not self._flood_reveal(nr, nc):
+                alive = False
+        return alive
 
     def toggle_flag(self, r: int, c: int) -> None:
         """Toggles a flag on a hidden cell."""
